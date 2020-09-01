@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "Emmett-Sentry"
+version = "0.1.0.dev0"
+description = "Sentry extension for Emmett framework"
+authors = ["Giovanni Barillari <gi0baro@d4net.org>"]
+license = "BSD-3-Clause"
+
+readme = "README.md"
+homepage = "https://github.com/emmett-framework/sentry"
+repository = "https://github.com/emmett-framework/sentry"
+
+keywords = ["sentry", "logging", "emmett"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+
+include = [
+    "LICENSE"
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+emmett = { git = "https://github.com/emmett-framework/emmett.git", rev = "f1d75d37d", allow-prereleases = true }
+sentry-sdk = ">=0.17.1"
+
+[tool.poetry.dev-dependencies]
+pylint = "^2.4.4"
+
+[tool.poetry.urls]
+"Issue Tracker" = "https://github.com/emmett-framework/sentry/issues"
+
+[build-system]
+requires = ["poetry>=1.0.0"]
+build-backend = "poetry.masonry.api"
