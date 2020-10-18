@@ -17,9 +17,8 @@ from emmett import current
 from emmett.http import HTTPResponse
 from sentry_sdk.hub import Hub, _should_send_default_pii
 from sentry_sdk.integrations._wsgi_common import _filter_headers
+from sentry_sdk.tracing import Transaction
 from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
-
-# TODO: transactions
 
 
 def _capture_exception(hub, exception):
@@ -30,6 +29,13 @@ def _capture_exception(hub, exception):
             mechanism={"type": "emmett", "handled": False},
         )
         hub.capture_event(event, hint=hint)
+
+
+def _capture_message(hub, message, level = None):
+    hub.capture_message(
+        message,
+        level=level
+    )
 
 
 def _process_common(data, wrapper):
@@ -80,7 +86,29 @@ def _process_ws(event, hint):
     return event
 
 
-def _build_http_dispatcher_wrapper(ext, dispatch_method):
+def _build_http_dispatcher_wrapper_err(ext, dispatch_method):
+    @wraps(dispatch_method)
+    async def wrap(*args, **kwargs):
+        with Hub(Hub.current) as hub:
+            with hub.push_scope() as scope:
+                scope.add_event_processor(_process_http)
+                for key, builder in ext._scopes.items():
+                    scope.set_extra(key, await builder())
+                try:
+                    return await dispatch_method(*args, **kwargs)
+                except HTTPResponse:
+                    raise
+                except Exception as exc:
+                    scope.set_extra(
+                        "body_params",
+                        await current.request.body_params
+                    )
+                    _capture_exception(hub, exc)
+                    raise
+    return wrap
+
+
+def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
         with Hub(Hub.current) as hub:
@@ -89,18 +117,44 @@ def _build_http_dispatcher_wrapper(ext, dispatch_method):
                 for key, builder in ext._scopes.items():
                     scope.set_extra(key, await builder())
 
+                txn = Transaction.continue_from_headers(
+                    current.request._scope["headers"],
+                    op="http.server"
+                )
+                txn.set_tag("asgi.type", "http")
+
+                with hub.start_transaction(txn):
+                    try:
+                        return await dispatch_method(*args, **kwargs)
+                    except HTTPResponse:
+                        raise
+                    except Exception as exc:
+                        scope.set_extra(
+                            "body_params",
+                            await current.request.body_params
+                        )
+                        _capture_exception(hub, exc)
+                        raise
+    return wrap
+
+
+def _build_ws_dispatcher_wrapper_err(ext, dispatch_method):
+    @wraps(dispatch_method)
+    async def wrap(*args, **kwargs):
+        with Hub(Hub.current) as hub:
+            with hub.push_scope() as scope:
+                scope.add_event_processor(_process_ws)
+                for key, builder in ext._scopes.items():
+                    scope.set_extra(key, await builder())
                 try:
                     return await dispatch_method(*args, **kwargs)
-                except HTTPResponse:
-                    raise
                 except Exception as exc:
-                    scope.set_extra("body_params", await current.request.body_params)
                     _capture_exception(hub, exc)
                     raise
     return wrap
 
 
-def _build_ws_dispatcher_wrapper(ext, dispatch_method):
+def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
         with Hub(Hub.current) as hub:
@@ -109,31 +163,48 @@ def _build_ws_dispatcher_wrapper(ext, dispatch_method):
                 for key, builder in ext._scopes.items():
                     scope.set_extra(key, await builder())
 
-                try:
-                    return await dispatch_method(*args, **kwargs)
-                except Exception as exc:
-                    _capture_exception(hub, exc)
-                    raise
+                txn = Transaction.continue_from_headers(
+                    current.request._scope["headers"],
+                    op="websocket.server"
+                )
+                txn.set_tag("asgi.type", "websocket")
+
+                with hub.start_transaction(txn):
+                    try:
+                        return await dispatch_method(*args, **kwargs)
+                    except Exception as exc:
+                        _capture_exception(hub, exc)
+                        raise
     return wrap
 
 
 def _build_routing_rec_http(ext, rec_cls):
+    wrapper = (
+        _build_http_dispatcher_wrapper_txn if ext.config.enable_tracing else
+        _build_http_dispatcher_wrapper_err
+    )
+
     def _routing_rec_http(router, name, match, dispatch):
         return rec_cls(
             name=name,
             match=match,
-            dispatch=_build_http_dispatcher_wrapper(ext, dispatch)
+            dispatch=wrapper(ext, dispatch)
         )
 
     return _routing_rec_http
 
 
 def _build_routing_rec_ws(ext, rec_cls):
+    wrapper = (
+        _build_ws_dispatcher_wrapper_txn if ext.config.enable_tracing else
+        _build_ws_dispatcher_wrapper_err
+    )
+
     def _routing_rec_ws(router, name, match, dispatch, flow_recv, flow_send):
         return rec_cls(
             name=name,
             match=match,
-            dispatch=_build_ws_dispatcher_wrapper(ext, dispatch),
+            dispatch=wrapper(ext, dispatch),
             flow_recv=flow_recv,
             flow_send=flow_send
         )

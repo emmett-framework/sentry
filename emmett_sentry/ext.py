@@ -11,14 +11,14 @@
 
 import sys
 
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 import sentry_sdk
 
 from emmett.extensions import Extension
 from sentry_sdk.hub import Hub
 
-from .helpers import _capture_exception, patch_routers
+from .helpers import _capture_exception, _capture_message, patch_routers
 
 
 class Sentry(Extension):
@@ -48,6 +48,10 @@ class Sentry(Extension):
         assert self._initialized, self._errmsg
         capture_exception(exc_info or sys.exc_info())
 
+    def message(self, msg: str, level: Optional[str] = None, **kwargs: Any):
+        assert self._initialized, self._errmsg
+        capture_message(msg, level)
+
     def extra_scope(self, name: str, builder: Callable[[], Awaitable[Any]]):
         self._scopes[name] = builder
 
@@ -55,3 +59,8 @@ class Sentry(Extension):
 def capture_exception(exception):
     with Hub(Hub.current) as hub:
         _capture_exception(hub, exception)
+
+
+def capture_message(message, level):
+    with Hub(Hub.current) as hub:
+        _capture_message(hub, message, level=level)
