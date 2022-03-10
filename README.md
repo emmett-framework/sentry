@@ -29,6 +29,8 @@ Here is the complete list of parameters of the extension configuration:
 | release | | Application release |
 | auto\_load | `True` | Automatically inject extension on routes |
 | enable\_tracing | `False` | Enable tracing on routes |
+| sample\_rate | 1 | Error sampling rate |
+| traces\_sample\_rate | | Traces sampling rate |
 
 ## Usage
 
