@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "Emmett-Sentry"
+name = "emmett-sentry"
 version = "0.2.0"
 description = "Sentry extension for Emmett framework"
 authors = ["Giovanni Barillari <gi0baro@d4net.org>"]
