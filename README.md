@@ -31,6 +31,7 @@ Here is the complete list of parameters of the extension configuration:
 | enable\_tracing | `False` | Enable tracing on routes |
 | sample\_rate | 1 | Error sampling rate |
 | traces\_sample\_rate | | Traces sampling rate |
+| trace\_websockets | `False` | Enable tracing on websocket routes |
 
 ## Usage
 
