@@ -14,7 +14,9 @@ import urllib
 from functools import wraps
 
 from emmett import current
+from emmett.asgi.wrappers import Request as ASGIRequest, Websocket as ASGIWebsocket
 from emmett.http import HTTPResponse
+from emmett.rsgi.wrappers import Request as RSGIRequest, Websocket as RSGIWebsocket
 from sentry_sdk.hub import Hub, _should_send_default_pii
 from sentry_sdk.integrations._wsgi_common import _filter_headers
 from sentry_sdk.tracing import Transaction
@@ -38,20 +40,31 @@ def _capture_message(hub, message, level = None):
     )
 
 
+def _process_common_asgi(data, wrapper):
+    data["query_string"] = urllib.parse.unquote(
+        wrapper._scope["query_string"].decode("latin-1")
+    )
+
+def _process_common_rsgi(data, wrapper):
+    data["query_string"] = urllib.parse.unquote(wrapper._scope.query_string)
+
+
 def _process_common(data, wrapper):
     data["url"] = "%s://%s%s" % (
         wrapper.scheme,
         wrapper.host,
         wrapper.path
     )
-    data["query_string"] = urllib.parse.unquote(
-        wrapper._scope["query_string"].decode("latin-1")
-    )
     data["env"] = {}
     data["headers"] = _filter_headers(dict(wrapper.headers.items()))
 
-    if wrapper._scope.get("client") and _should_send_default_pii():
-        data["env"]["REMOTE_ADDR"] = wrapper._scope["client"][0]
+    if _should_send_default_pii():
+        data["env"]["REMOTE_ADDR"] = wrapper.client
+
+    if isinstance(wrapper, (ASGIRequest, ASGIWebsocket)):
+        _process_common_asgi(data, wrapper)
+    elif isinstance(wrapper, (RSGIRequest, RSGIWebsocket)):
+        _process_common_rsgi(data, wrapper)
 
 
 def _process_http(event, hint):
@@ -117,11 +130,15 @@ def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
                 for key, builder in ext._scopes.items():
                     scope.set_extra(key, await builder())
 
+                proto = (
+                    "rsgi" if hasattr(current.request._scope, "rsgi_version") else
+                    "asgi"
+                )
                 txn = Transaction.continue_from_headers(
-                    current.request._scope["headers"],
+                    current.request.headers,
                     op="http.server"
                 )
-                txn.set_tag("asgi.type", "http")
+                txn.set_tag(f"{proto}.type", "http")
 
                 with hub.start_transaction(txn):
                     try:
@@ -163,11 +180,15 @@ def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
                 for key, builder in ext._scopes.items():
                     scope.set_extra(key, await builder())
 
+                proto = (
+                    "rsgi" if hasattr(current.websocket._scope, "rsgi_version") else
+                    "asgi"
+                )
                 txn = Transaction.continue_from_headers(
-                    current.request._scope["headers"],
+                    current.websocket.headers,
                     op="websocket.server"
                 )
-                txn.set_tag("asgi.type", "websocket")
+                txn.set_tag(f"{proto}.type", "websocket")
 
                 with hub.start_transaction(txn):
                     try:
@@ -196,8 +217,9 @@ def _build_routing_rec_http(ext, rec_cls):
 
 def _build_routing_rec_ws(ext, rec_cls):
     wrapper = (
-        _build_ws_dispatcher_wrapper_txn if ext.config.enable_tracing else
-        _build_ws_dispatcher_wrapper_err
+        _build_ws_dispatcher_wrapper_txn if (
+            ext.config.enable_tracing and ext.config.trace_websockets
+        ) else _build_ws_dispatcher_wrapper_err
     )
 
     def _routing_rec_ws(router, name, match, dispatch, flow_recv, flow_send):

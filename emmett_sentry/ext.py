@@ -31,7 +31,8 @@ class Sentry(Extension):
         auto_load=True,
         enable_tracing=False,
         sample_rate=1.0,
-        traces_sample_rate=None
+        traces_sample_rate=None,
+        trace_websockets=False
     )
     _initialized = False
     _errmsg = "You need to configure Sentry extension before using its methods"
@@ -49,7 +50,8 @@ class Sentry(Extension):
             traces_sample_rate=self.config.traces_sample_rate,
             before_send=self._before_send
         )
-        patch_routers(self)
+        if self.config.auto_load:
+            patch_routers(self)
         self._initialized = True
 
     def _before_send(self, event, hint):
