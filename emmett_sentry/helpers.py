@@ -211,7 +211,7 @@ def _build_routing_rec_http(ext, rec_cls):
         return rec_cls(
             name=name,
             match=match,
-            dispatch=wrapper(ext, name, dispatch)
+            dispatch=wrapper(ext, dispatch)
         )
 
     return _routing_rec_http
@@ -230,7 +230,7 @@ def _build_routing_rec_ws(ext, rec_cls):
         return rec_cls(
             name=name,
             match=match,
-            dispatch=wrapper(ext, name, dispatch),
+            dispatch=wrapper(ext, dispatch),
             flow_recv=flow_recv,
             flow_send=flow_send
         )
