@@ -200,33 +200,37 @@ def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
 
 
 def _build_routing_rec_http(ext, rec_cls):
-    wrapper = (
-        _build_http_dispatcher_wrapper_txn if ext.config.enable_tracing else
-        _build_http_dispatcher_wrapper_err
-    )
-
     def _routing_rec_http(router, name, match, dispatch):
+        wrapper = (
+            _build_http_dispatcher_wrapper_txn if (
+                ext.config.enable_tracing and
+                name not in ext._tracing_excluded_routes
+            ) else _build_http_dispatcher_wrapper_err
+        )
+
         return rec_cls(
             name=name,
             match=match,
-            dispatch=wrapper(ext, dispatch)
+            dispatch=wrapper(ext, name, dispatch)
         )
 
     return _routing_rec_http
 
 
 def _build_routing_rec_ws(ext, rec_cls):
-    wrapper = (
-        _build_ws_dispatcher_wrapper_txn if (
-            ext.config.enable_tracing and ext.config.trace_websockets
-        ) else _build_ws_dispatcher_wrapper_err
-    )
-
     def _routing_rec_ws(router, name, match, dispatch, flow_recv, flow_send):
+        wrapper = (
+            _build_ws_dispatcher_wrapper_txn if (
+                ext.config.enable_tracing and
+                ext.config.trace_websockets and
+                name not in ext._tracing_excluded_routes
+            ) else _build_ws_dispatcher_wrapper_err
+        )
+
         return rec_cls(
             name=name,
             match=match,
-            dispatch=wrapper(ext, dispatch),
+            dispatch=wrapper(ext, name, dispatch),
             flow_recv=flow_recv,
             flow_send=flow_send
         )

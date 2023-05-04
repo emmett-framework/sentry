@@ -32,7 +32,8 @@ class Sentry(Extension):
         enable_tracing=False,
         sample_rate=1.0,
         traces_sample_rate=None,
-        trace_websockets=False
+        trace_websockets=False,
+        tracing_exclude_routes=[]
     )
     _initialized = False
     _errmsg = "You need to configure Sentry extension before using its methods"
@@ -42,6 +43,7 @@ class Sentry(Extension):
         self._before_send_callbacks = []
         if not self.config.dsn:
             return
+        self._tracing_excluded_routes = set(self.config.tracing_exclude_routes)
         sentry_sdk.init(
             dsn=self.config.dsn,
             environment=self.config.environment,
