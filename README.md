@@ -30,9 +30,14 @@ Here is the complete list of parameters of the extension configuration:
 | auto\_load | `True` | Automatically inject extension on routes |
 | enable\_tracing | `False` | Enable tracing on routes |
 | sample\_rate | 1 | Error sampling rate |
-| traces\_sample\_rate | | Traces sampling rate |
-| trace\_websockets | `False` | Enable tracing on websocket routes |
+| tracing\_sample\_rate | | Traces sampling rate |
 | tracing\_exclude\_routes | | List of specific routes to exclude from tracing | 
+| trace\_websockets | `False` | Enable tracing on websocket routes |
+| trace\_orm | `True` | Enable tracing on ORM queries |
+| trace\_templates | `True` | Enable tracing on templates rendering |
+| trace\_sessions | `True` | Enable tracing on sessions load/store |
+| trace\_cache | `True` | Enable tracing on cache get/set |
+| trace\_pipes | `False` | Enable tracing on pipes |
 
 ## Usage
 
