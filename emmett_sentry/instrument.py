@@ -72,9 +72,7 @@ def _pipe_edge_tracer(original, mode):
     @wraps(original)
     async def wrapped(*args, **kwargs):
         hub = Hub.current
-        with hub.start_span(
-            op=f"middleware.emmett.{mode}", description=name
-        ) as span:
+        with hub.start_span(op=f"pipe.{mode}", description=name) as span:
             span.set_tag("emmett.pipe", name)
             return await original(*args, **kwargs)
     return wrapped
@@ -86,9 +84,7 @@ def _pipe_flow_tracer(original, pipe):
     @wraps(original)
     async def wrapped(*args, **kwargs):
         hub = Hub.current
-        with hub.start_span(
-            op="middleware.emmett", description=name
-        ) as span:
+        with hub.start_span(op="pipe", description=name) as span:
             span.set_tag("emmett.pipe", name)
             return await original(*args, **kwargs)
     return wrapped
