@@ -1,14 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    emmett_sentry.helpers
-    ---------------------
-
-    Provides Sentry extension helpers
-
-    :copyright: 2020 Giovanni Barillari
-    :license: BSD-3-Clause
-"""
-
 import urllib
 
 from functools import wraps
@@ -102,11 +91,44 @@ def _process_ws(event, hint):
 def _build_http_dispatcher_wrapper_err(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
-        with Hub(Hub.current) as hub:
-            with hub.push_scope() as scope:
-                scope.add_event_processor(_process_http)
-                for key, builder in ext._scopes.items():
-                    scope.set_extra(key, await builder())
+        hub = Hub.current
+        with hub.push_scope() as scope:
+            scope.add_event_processor(_process_http)
+            for key, builder in ext._scopes.items():
+                scope.set_extra(key, await builder())
+            try:
+                return await dispatch_method(*args, **kwargs)
+            except HTTPResponse:
+                raise
+            except Exception as exc:
+                scope.set_extra(
+                    "body_params",
+                    await current.request.body_params
+                )
+                _capture_exception(hub, exc)
+                raise
+    return wrap
+
+
+def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
+    @wraps(dispatch_method)
+    async def wrap(*args, **kwargs):
+        hub = Hub.current
+        with hub.push_scope() as scope:
+            scope.add_event_processor(_process_http)
+            for key, builder in ext._scopes.items():
+                scope.set_extra(key, await builder())
+
+            proto = (
+                "rsgi" if hasattr(current.request._scope, "rsgi_version") else "asgi"
+            )
+            txn = Transaction.continue_from_headers(
+                current.request.headers,
+                op="http.server"
+            )
+            txn.set_tag(f"{proto}.type", "http")
+
+            with hub.start_transaction(txn):
                 try:
                     return await dispatch_method(*args, **kwargs)
                 except HTTPResponse:
@@ -121,81 +143,46 @@ def _build_http_dispatcher_wrapper_err(ext, dispatch_method):
     return wrap
 
 
-def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
-    @wraps(dispatch_method)
-    async def wrap(*args, **kwargs):
-        with Hub(Hub.current) as hub:
-            with hub.push_scope() as scope:
-                scope.add_event_processor(_process_http)
-                for key, builder in ext._scopes.items():
-                    scope.set_extra(key, await builder())
-
-                proto = (
-                    "rsgi" if hasattr(current.request._scope, "rsgi_version") else
-                    "asgi"
-                )
-                txn = Transaction.continue_from_headers(
-                    current.request.headers,
-                    op="http.server"
-                )
-                txn.set_tag(f"{proto}.type", "http")
-
-                with hub.start_transaction(txn):
-                    try:
-                        return await dispatch_method(*args, **kwargs)
-                    except HTTPResponse:
-                        raise
-                    except Exception as exc:
-                        scope.set_extra(
-                            "body_params",
-                            await current.request.body_params
-                        )
-                        _capture_exception(hub, exc)
-                        raise
-    return wrap
-
-
 def _build_ws_dispatcher_wrapper_err(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
-        with Hub(Hub.current) as hub:
-            with hub.push_scope() as scope:
-                scope.add_event_processor(_process_ws)
-                for key, builder in ext._scopes.items():
-                    scope.set_extra(key, await builder())
-                try:
-                    return await dispatch_method(*args, **kwargs)
-                except Exception as exc:
-                    _capture_exception(hub, exc)
-                    raise
+        hub = Hub.current
+        with hub.push_scope() as scope:
+            scope.add_event_processor(_process_ws)
+            for key, builder in ext._scopes.items():
+                scope.set_extra(key, await builder())
+            try:
+                return await dispatch_method(*args, **kwargs)
+            except Exception as exc:
+                _capture_exception(hub, exc)
+                raise
     return wrap
 
 
 def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
-        with Hub(Hub.current) as hub:
-            with hub.push_scope() as scope:
-                scope.add_event_processor(_process_ws)
-                for key, builder in ext._scopes.items():
-                    scope.set_extra(key, await builder())
+        hub = Hub.current
+        with hub.push_scope() as scope:
+            scope.add_event_processor(_process_ws)
+            for key, builder in ext._scopes.items():
+                scope.set_extra(key, await builder())
 
-                proto = (
-                    "rsgi" if hasattr(current.websocket._scope, "rsgi_version") else
-                    "asgi"
-                )
-                txn = Transaction.continue_from_headers(
-                    current.websocket.headers,
-                    op="websocket.server"
-                )
-                txn.set_tag(f"{proto}.type", "websocket")
+            proto = (
+                "rsgi" if hasattr(current.websocket._scope, "rsgi_version") else "asgi"
+            )
+            txn = Transaction.continue_from_headers(
+                current.websocket.headers,
+                op="websocket.server"
+            )
+            txn.set_tag(f"{proto}.type", "websocket")
 
-                with hub.start_transaction(txn):
-                    try:
-                        return await dispatch_method(*args, **kwargs)
-                    except Exception as exc:
-                        _capture_exception(hub, exc)
-                        raise
+            with hub.start_transaction(txn):
+                try:
+                    return await dispatch_method(*args, **kwargs)
+                except Exception as exc:
+                    _capture_exception(hub, exc)
+                    raise
     return wrap
 
 

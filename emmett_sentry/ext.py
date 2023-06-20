@@ -1,21 +1,10 @@
-# -*- coding: utf-8 -*-
-"""
-    emmett_sentry.ext
-    -----------------
-
-    Provides Sentry extension
-
-    :copyright: 2020 Giovanni Barillari
-    :license: BSD-3-Clause
-"""
-
 import sys
 
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import sentry_sdk
 
-from emmett.extensions import Extension
+from emmett.extensions import Extension, Signals, listen_signal
 from sentry_sdk.hub import Hub
 
 from .helpers import _capture_exception, _capture_message, patch_routers
@@ -31,9 +20,14 @@ class Sentry(Extension):
         auto_load=True,
         enable_tracing=False,
         sample_rate=1.0,
-        traces_sample_rate=None,
+        tracing_sample_rate=None,
+        tracing_exclude_routes=[],
         trace_websockets=False,
-        tracing_exclude_routes=[]
+        trace_orm=True,
+        trace_templates=True,
+        trace_sessions=True,
+        trace_cache=True,
+        trace_pipes=False
     )
     _initialized = False
     _errmsg = "You need to configure Sentry extension before using its methods"
@@ -49,12 +43,34 @@ class Sentry(Extension):
             environment=self.config.environment,
             release=self.config.release,
             sample_rate=self.config.sample_rate,
-            traces_sample_rate=self.config.traces_sample_rate,
+            traces_sample_rate=self.config.tracing_sample_rate,
             before_send=self._before_send
         )
         if self.config.auto_load:
             patch_routers(self)
+        self._instrument()
         self._initialized = True
+
+    def _instrument(self):
+        if self.config.enable_tracing:
+            if self.config.trace_templates:
+                from .instrument import instrument_templater
+                instrument_templater(self.app)
+            if self.config.trace_sessions:
+                from .instrument import instrument_sessions
+                instrument_sessions()
+            if self.config.trace_cache:
+                from .instrument import instrument_cache
+                instrument_cache()
+            if self.config.trace_pipes:
+                from .instrument import instrument_pipes
+                instrument_pipes()
+
+    @listen_signal(Signals.after_database)
+    def _signal_db(self, database):
+        if self.config.enable_tracing and self.config.trace_orm:
+            from .instrument import instrument_orm
+            instrument_orm(database)
 
     def _before_send(self, event, hint):
         for callback in self._before_send_callbacks:
