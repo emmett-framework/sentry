@@ -27,7 +27,8 @@ class Sentry(Extension):
         trace_templates=True,
         trace_sessions=True,
         trace_cache=True,
-        trace_pipes=False
+        trace_pipes=False,
+        integrations=[]
     )
     _initialized = False
     _errmsg = "You need to configure Sentry extension before using its methods"
@@ -44,7 +45,8 @@ class Sentry(Extension):
             release=self.config.release,
             sample_rate=self.config.sample_rate,
             traces_sample_rate=self.config.tracing_sample_rate,
-            before_send=self._before_send
+            before_send=self._before_send,
+            integrations=self.config.integrations
         )
         if self.config.auto_load:
             patch_routers(self)

@@ -28,8 +28,9 @@ Here is the complete list of parameters of the extension configuration:
 | environment | development | Application environment |
 | release | | Application release |
 | auto\_load | `True` | Automatically inject extension on routes |
-| enable\_tracing | `False` | Enable tracing on routes |
 | sample\_rate | 1 | Error sampling rate |
+| integrations | | List of integrations to pass to the SDK |
+| enable\_tracing | `False` | Enable tracing on routes |
 | tracing\_sample\_rate | | Traces sampling rate |
 | tracing\_exclude\_routes | | List of specific routes to exclude from tracing | 
 | trace\_websockets | `False` | Enable tracing on websocket routes |
