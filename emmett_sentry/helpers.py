@@ -8,7 +8,7 @@ from emmett.http import HTTPResponse
 from emmett.rsgi.wrappers import Request as RSGIRequest, Websocket as RSGIWebsocket
 from sentry_sdk.hub import Hub, _should_send_default_pii
 from sentry_sdk.integrations._wsgi_common import _filter_headers
-from sentry_sdk.tracing import Transaction
+from sentry_sdk.tracing import Transaction, TRANSACTION_SOURCE_ROUTE
 from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
 
 
@@ -23,10 +23,12 @@ def _capture_exception(hub, exception):
 
 
 def _capture_message(hub, message, level = None):
-    hub.capture_message(
-        message,
-        level=level
-    )
+    with capture_internal_exceptions():
+        hub.capture_message(message, level=level)
+
+
+def _configure_transaction(scope, wrapper):
+    scope.set_transaction_name(wrapper.name, source=TRANSACTION_SOURCE_ROUTE)
 
 
 def _process_common_asgi(data, wrapper):
@@ -68,8 +70,6 @@ def _process_http(event, hint):
         data["method"] = wrapper.method
         data["content_length"] = wrapper.content_length
 
-    event["transaction"] = wrapper.name
-
     return event
 
 
@@ -83,8 +83,6 @@ def _process_ws(event, hint):
         data = event.setdefault("request", {})
         _process_common(data, wrapper)
 
-    event["transaction"] = wrapper.name
-
     return event
 
 
@@ -93,15 +91,16 @@ def _build_http_dispatcher_wrapper_err(ext, dispatch_method):
     async def wrap(*args, **kwargs):
         hub = Hub.current
         with hub.push_scope() as scope:
+            _configure_transaction(scope, current.request)
             scope.add_event_processor(_process_http)
             for key, builder in ext._scopes.items():
-                scope.set_extra(key, await builder())
+                scope.set_context(key, await builder())
             try:
                 return await dispatch_method(*args, **kwargs)
             except HTTPResponse:
                 raise
             except Exception as exc:
-                scope.set_extra(
+                scope.set_context(
                     "body_params",
                     await current.request.body_params
                 )
@@ -117,14 +116,16 @@ def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
         with hub.push_scope() as scope:
             scope.add_event_processor(_process_http)
             for key, builder in ext._scopes.items():
-                scope.set_extra(key, await builder())
+                scope.set_context(key, await builder())
 
             proto = (
                 "rsgi" if hasattr(current.request._scope, "rsgi_version") else "asgi"
             )
             txn = Transaction.continue_from_headers(
                 current.request.headers,
-                op="http.server"
+                op="http.server",
+                name=current.request.name,
+                source=TRANSACTION_SOURCE_ROUTE
             )
             txn.set_tag(f"{proto}.type", "http")
 
@@ -134,7 +135,7 @@ def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
                 except HTTPResponse:
                     raise
                 except Exception as exc:
-                    scope.set_extra(
+                    scope.set_context(
                         "body_params",
                         await current.request.body_params
                     )
@@ -148,9 +149,10 @@ def _build_ws_dispatcher_wrapper_err(ext, dispatch_method):
     async def wrap(*args, **kwargs):
         hub = Hub.current
         with hub.push_scope() as scope:
+            _configure_transaction(scope, current.websocket)
             scope.add_event_processor(_process_ws)
             for key, builder in ext._scopes.items():
-                scope.set_extra(key, await builder())
+                scope.set_context(key, await builder())
             try:
                 return await dispatch_method(*args, **kwargs)
             except Exception as exc:
@@ -166,14 +168,16 @@ def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
         with hub.push_scope() as scope:
             scope.add_event_processor(_process_ws)
             for key, builder in ext._scopes.items():
-                scope.set_extra(key, await builder())
+                scope.set_context(key, await builder())
 
             proto = (
                 "rsgi" if hasattr(current.websocket._scope, "rsgi_version") else "asgi"
             )
             txn = Transaction.continue_from_headers(
                 current.websocket.headers,
-                op="websocket.server"
+                op="websocket.server",
+                name=current.websocket.name,
+                source=TRANSACTION_SOURCE_ROUTE
             )
             txn.set_tag(f"{proto}.type", "websocket")
 
