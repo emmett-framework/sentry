@@ -1,6 +1,6 @@
 import sys
 
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
 import sentry_sdk
 
@@ -81,13 +81,13 @@ class Sentry(Extension):
                 break
         return event
 
-    def exception(self, exc_info: Any = None, **kwargs: Any):
+    def exception(self, exc_info: Any = None, **kwargs: Dict[str, Any]):
         assert self._initialized, self._errmsg
-        capture_exception(exc_info or sys.exc_info())
+        capture_exception(exc_info or sys.exc_info(), **kwargs)
 
-    def message(self, msg: str, level: Optional[str] = None, **kwargs: Any):
+    def message(self, msg: str, level: Optional[str] = None, **kwargs: Dict[str, Any]):
         assert self._initialized, self._errmsg
-        capture_message(msg, level)
+        capture_message(msg, level, **kwargs)
 
     def extra_scope(self, name: str, builder: Callable[[], Awaitable[Any]]):
         self._scopes[name] = builder
@@ -97,11 +97,15 @@ class Sentry(Extension):
         return f
 
 
-def capture_exception(exception):
+def capture_exception(exception, **contexts):
     with Hub(Hub.current) as hub:
+        for key, val in contexts.items():
+            hub.scope.set_context(key, val)
         _capture_exception(hub, exception)
 
 
-def capture_message(message, level):
+def capture_message(message, level, **contexts):
     with Hub(Hub.current) as hub:
+        for key, val in contexts.items():
+            hub.scope.set_context(key, val)
         _capture_message(hub, message, level=level)
