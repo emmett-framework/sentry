@@ -1,6 +1,9 @@
+[project]
+name = "emmett-sentry"
+
 [tool.poetry]
 name = "emmett-sentry"
-version = "0.5.2"
+version = "0.6.0"
 description = "Sentry extension for Emmett framework"
 authors = ["Giovanni Barillari <g@baro.dev>"]
 license = "BSD-3-Clause"
