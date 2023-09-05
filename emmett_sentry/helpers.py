@@ -1,4 +1,5 @@
 import urllib
+import weakref
 
 from functools import wraps
 
@@ -28,7 +29,24 @@ def _capture_message(hub, message, level = None):
 
 
 def _configure_transaction(scope, wrapper):
+    scope.clear_breadcrumbs()
     scope.set_transaction_name(wrapper.name, source=TRANSACTION_SOURCE_ROUTE)
+
+
+def _continue_transaction(scope, wrapper, wrapper_type):
+    scope.clear_breadcrumbs()
+    proto = (
+        "rsgi" if hasattr(wrapper._scope, "rsgi_version") else
+        "asgi"
+    )
+    txn = Transaction.continue_from_headers(
+        wrapper.headers,
+        op=f"{wrapper_type}.server",
+        name=wrapper.name,
+        source=TRANSACTION_SOURCE_ROUTE
+    )
+    txn.set_tag(f"{proto}.type", wrapper_type)
+    return txn
 
 
 def _process_common_asgi(data, wrapper):
@@ -58,78 +76,50 @@ def _process_common(data, wrapper):
         _process_common_rsgi(data, wrapper)
 
 
-def _process_http(event, hint):
-    if not hasattr(current, "request"):
+def _process_http(weak_wrapper):
+    def processor(event, hint):
+        wrapper = weak_wrapper()
+        if wrapper is None:
+            return event
+
+        with capture_internal_exceptions():
+            data = event.setdefault("request", {})
+            _process_common(data, wrapper)
+            data["method"] = wrapper.method
+            data["content_length"] = wrapper.content_length
+
         return event
 
-    wrapper = current.request
-
-    with capture_internal_exceptions():
-        data = event.setdefault("request", {})
-        _process_common(data, wrapper)
-        data["method"] = wrapper.method
-        data["content_length"] = wrapper.content_length
-
-    return event
+    return processor
 
 
-def _process_ws(event, hint):
-    if not hasattr(current, "websocket"):
+def _process_ws(weak_wrapper):
+    def processor(event, hint):
+        wrapper = weak_wrapper()
+        if wrapper is None:
+            return event
+
+        with capture_internal_exceptions():
+            data = event.setdefault("request", {})
+            _process_common(data, wrapper)
+
         return event
 
-    wrapper = current.websocket
-
-    with capture_internal_exceptions():
-        data = event.setdefault("request", {})
-        _process_common(data, wrapper)
-
-    return event
+    return processor
 
 
 def _build_http_dispatcher_wrapper_err(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
         hub = Hub.current
-        with hub.push_scope() as scope:
-            _configure_transaction(scope, current.request)
-            scope.add_event_processor(_process_http)
-            for key, builder in ext._scopes.items():
-                scope.set_context(key, await builder())
-            try:
-                return await dispatch_method(*args, **kwargs)
-            except HTTPResponse:
-                raise
-            except Exception as exc:
-                scope.set_context(
-                    "body_params",
-                    await current.request.body_params
-                )
-                _capture_exception(hub, exc)
-                raise
-    return wrap
+        weak_request = weakref.ref(current.request)
 
-
-def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
-    @wraps(dispatch_method)
-    async def wrap(*args, **kwargs):
-        hub = Hub.current
-        with hub.push_scope() as scope:
-            scope.add_event_processor(_process_http)
-            for key, builder in ext._scopes.items():
-                scope.set_context(key, await builder())
-
-            proto = (
-                "rsgi" if hasattr(current.request._scope, "rsgi_version") else "asgi"
-            )
-            txn = Transaction.continue_from_headers(
-                current.request.headers,
-                op="http.server",
-                name=current.request.name,
-                source=TRANSACTION_SOURCE_ROUTE
-            )
-            txn.set_tag(f"{proto}.type", "http")
-
-            with hub.start_transaction(txn):
+        with Hub(hub) as hub:
+            with hub.configure_scope() as scope:
+                _configure_transaction(scope, current.request)
+                scope.add_event_processor(_process_http(weak_request))
+                for key, builder in ext._scopes.items():
+                    scope.set_context(key, await builder())
                 try:
                     return await dispatch_method(*args, **kwargs)
                 except HTTPResponse:
@@ -141,6 +131,34 @@ def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
                     )
                     _capture_exception(hub, exc)
                     raise
+
+    return wrap
+
+
+def _build_http_dispatcher_wrapper_txn(ext, dispatch_method):
+    @wraps(dispatch_method)
+    async def wrap(*args, **kwargs):
+        hub = Hub.current
+        weak_request = weakref.ref(current.request)
+
+        with Hub(hub) as hub:
+            with hub.configure_scope() as scope:
+                txn = _continue_transaction(scope, current.request, "http")
+                scope.add_event_processor(_process_http(weak_request))
+                for key, builder in ext._scopes.items():
+                    scope.set_context(key, await builder())
+                with hub.start_transaction(txn):
+                    try:
+                        return await dispatch_method(*args, **kwargs)
+                    except HTTPResponse:
+                        raise
+                    except Exception as exc:
+                        scope.set_context(
+                            "body_params",
+                            await current.request.body_params
+                        )
+                        _capture_exception(hub, exc)
+                        raise
     return wrap
 
 
@@ -148,9 +166,11 @@ def _build_ws_dispatcher_wrapper_err(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
         hub = Hub.current
-        with hub.push_scope() as scope:
+        weak_websocket = weakref.ref(current.websocket)
+
+        with hub.configure_scope() as scope:
             _configure_transaction(scope, current.websocket)
-            scope.add_event_processor(_process_ws)
+            scope.add_event_processor(_process_ws(weak_websocket))
             for key, builder in ext._scopes.items():
                 scope.set_context(key, await builder())
             try:
@@ -165,28 +185,21 @@ def _build_ws_dispatcher_wrapper_txn(ext, dispatch_method):
     @wraps(dispatch_method)
     async def wrap(*args, **kwargs):
         hub = Hub.current
-        with hub.push_scope() as scope:
-            scope.add_event_processor(_process_ws)
-            for key, builder in ext._scopes.items():
-                scope.set_context(key, await builder())
+        weak_websocket = weakref.ref(current.websocket)
 
-            proto = (
-                "rsgi" if hasattr(current.websocket._scope, "rsgi_version") else "asgi"
-            )
-            txn = Transaction.continue_from_headers(
-                current.websocket.headers,
-                op="websocket.server",
-                name=current.websocket.name,
-                source=TRANSACTION_SOURCE_ROUTE
-            )
-            txn.set_tag(f"{proto}.type", "websocket")
+        with Hub(hub) as hub:
+            with hub.configure_scope() as scope:
+                txn = _continue_transaction(scope, current.request, "websocket")
+                scope.add_event_processor(_process_ws(weak_websocket))
+                for key, builder in ext._scopes.items():
+                    scope.set_context(key, await builder())
 
-            with hub.start_transaction(txn):
-                try:
-                    return await dispatch_method(*args, **kwargs)
-                except Exception as exc:
-                    _capture_exception(hub, exc)
-                    raise
+                with hub.start_transaction(txn):
+                    try:
+                        return await dispatch_method(*args, **kwargs)
+                    except Exception as exc:
+                        _capture_exception(hub, exc)
+                        raise
     return wrap
 
 
