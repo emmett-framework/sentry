@@ -2,6 +2,8 @@
 
 Emmett-Sentry is an [Emmett framework](https://emmett.sh) extension integrating [Sentry](https://sentry.io) monitoring platform.
 
+Emmett-Sentry is compatible both with Emmett and Emmett55.
+
 ## Installation
 
 You can install Emmett-Sentry using pip:
@@ -37,6 +39,7 @@ Here is the complete list of parameters of the extension configuration:
 | trace\_sessions | `True` | Enable tracing on sessions load/store |
 | trace\_cache | `True` | Enable tracing on cache get/set |
 | trace\_pipes | `False` | Enable tracing on pipes |
+| sdk\_opts | `{}` | Additional configuration for the Sentry SDK |
 
 ## Usage
 
