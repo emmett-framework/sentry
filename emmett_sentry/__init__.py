@@ -1,1 +1,1 @@
-from .ext import Sentry # noqa
+from .ext import Sentry

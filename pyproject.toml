@@ -1,16 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "emmett-sentry"
-
-[tool.poetry]
-name = "emmett-sentry"
-version = "0.6.1"
+version = "0.7.0"
 description = "Sentry extension for Emmett framework"
-authors = ["Giovanni Barillari <g@baro.dev>"]
-license = "BSD-3-Clause"
-
 readme = "README.md"
-homepage = "https://github.com/emmett-framework/sentry"
-repository = "https://github.com/emmett-framework/sentry"
+license = "BSD-3-Clause"
+requires-python = ">=3.8"
+
+authors = [
+    { name = "Giovanni Barillari", email = "g@baro.dev" }
+]
 
 keywords = ["sentry", "logging", "emmett"]
 classifiers = [
@@ -25,24 +27,64 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 
-include = [
-    "LICENSE"
+dependencies = [
+    "emmett-core~=1.0",
+    "sentry-sdk~=2.16",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-emmett = "^2.5.0"
-sentry-sdk = "^1.31.0"
+[project.urls]
+Homepage = 'https://github.com/emmett-framework/sentry'
+Funding = 'https://github.com/sponsors/gi0baro'
+Source = 'https://github.com/emmett-framework/sentry'
+Issues = 'https://github.com/emmett-framework/sentry/issues'
 
-[tool.poetry.dev-dependencies]
+[tool.hatch.build.targets.sdist]
+include = [
+    '/README.md',
+    '/LICENSE',
+    '/emmett_sentry',
+]
 
-[tool.poetry.urls]
-"Issue Tracker" = "https://github.com/emmett-framework/sentry/issues"
+[tool.ruff]
+line-length = 120
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.ruff.format]
+quote-style = 'double'
+
+[tool.ruff.lint]
+extend-select = [
+    # E and F are enabled by default
+    'B',      # flake8-bugbear
+    'C4',     # flake8-comprehensions
+    'C90',    # mccabe
+    'I',      # isort
+    'N',      # pep8-naming
+    'Q',      # flake8-quotes
+    'RUF100', # ruff (unused noqa)
+    'S',      # flake8-bandit
+    'W',      # pycodestyle
+]
+extend-ignore = [
+    'S101', # assert is fine
+]
+mccabe = { max-complexity = 44 }
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
+known-first-party = ['emmett_sentry']
+
+[tool.ruff.lint.per-file-ignores]
+'emmett_sentry/__init__.py' = ['F401']
+'emmett_sentry/_imports.py' = ['F401']
+
+[tool.uv]
+dev-dependencies = [
+    "ruff~=0.5.0",
+]

@@ -2,8 +2,6 @@
 
 Emmett-Sentry is an [Emmett framework](https://emmett.sh) extension integrating [Sentry](https://sentry.io) monitoring platform.
 
-[![pip version](https://img.shields.io/pypi/v/emmett-sentry.svg?style=flat)](https://pypi.python.org/pypi/emmett-sentry) 
-
 ## Installation
 
 You can install Emmett-Sentry using pip:
