@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "emmett-sentry"
-version = "0.7.0"
+version = "0.8.0"
 description = "Sentry extension for Emmett framework"
 readme = "README.md"
 license = "BSD-3-Clause"
