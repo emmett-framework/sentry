@@ -199,9 +199,13 @@ def _build_ws_dispatcher_wrapper(ext, dispatch_method, use_txn=False):
 
 
 def _build_routing_rec_http(ext, rec_cls):
-    def _routing_rec_http(router, name, dispatch):
+    def _routing_rec_http(router, name, dispatch, flow_stream):
         use_txn = ext.config.enable_tracing and name not in ext._tracing_excluded_routes
-        return rec_cls(name=name, dispatch=_build_http_dispatcher_wrapper(ext, dispatch, use_txn=use_txn))
+        return rec_cls(
+            name=name,
+            dispatch=_build_http_dispatcher_wrapper(ext, dispatch, use_txn=use_txn),
+            flow_stream=flow_stream,
+        )
 
     return _routing_rec_http
 

@@ -33,7 +33,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "emmett-core~=1.0",
+    "emmett-core~=1.3",
     "sentry-sdk~=2.16",
 ]
 
