@@ -19,6 +19,19 @@ _SPAN_ORIGIN = "auto.http.emmett"
 _SPAN_ORIGIN_DB = "auto.db.emmett"
 
 
+class _FakeTxn:
+    def set_http_status(self, *args, **kwargs):
+        return
+
+
+class _TxnNullContext:
+    def __enter__(self):
+        return _FakeTxn()
+
+    def __exit__(self, *args, **kwargs):
+        return
+
+
 def _capture_exception(exception, handled=False):
     event, hint = event_from_exception(
         exception,
@@ -42,7 +55,7 @@ def _http_scope_wrapper(req, proto, with_sess=True, with_txn=False):
     _ctx = (
         sentry_sdk.start_transaction(_configure_transaction(proto, req, "http"), custom_sampling_context=None)
         if with_txn
-        else nullcontext()
+        else _TxnNullContext()
     )
     _txn = _ctx.__enter__()
     try:
