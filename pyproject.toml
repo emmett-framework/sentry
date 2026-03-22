@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "emmett-sentry"
-version = "0.8.2"
+version = "0.9.0"
 description = "Sentry extension for Emmett framework"
 readme = "README.md"
 license = "BSD-3-Clause"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 authors = [
     { name = "Giovanni Barillari", email = "g@baro.dev" }
@@ -23,11 +23,11 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
@@ -85,5 +85,5 @@ known-first-party = ['emmett_sentry']
 
 [tool.uv]
 dev-dependencies = [
-    "ruff~=0.11.0",
+    "ruff~=0.11",
 ]
