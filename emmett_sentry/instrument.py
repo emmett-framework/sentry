@@ -1,9 +1,11 @@
 import asyncio
+import json
 from functools import wraps
 
-import sentry_sdk
+from sentry_sdk import traces
 from sentry_sdk.consts import OP, SPANDATA
 from sentry_sdk.tracing_utils import record_sql_queries
+from sentry_sdk.utils import capture_internal_exceptions, safe_repr
 
 from ._imports import _is_emmett
 from .helpers import _SPAN_ORIGIN, _SPAN_ORIGIN_DB
@@ -14,6 +16,8 @@ def _orm_tracer(adapter):
 
     @wraps(_original_method)
     def wrapped(*args, **kwargs):
+        if traces.get_current_span() is None:
+            return _original_method(*args, **kwargs)
         with record_sql_queries(
             cursor=adapter.cursor,
             query=args[0],
@@ -22,25 +26,30 @@ def _orm_tracer(adapter):
             executemany=False,
             span_origin=_SPAN_ORIGIN_DB,
         ) as span:
-            span.set_data(SPANDATA.DB_SYSTEM, adapter.dbengine)
+            span.set_attribute(SPANDATA.DB_SYSTEM, adapter.dbengine)
             return _original_method(*args, **kwargs)
 
     return wrapped
 
 
 def _templater_ctx_filter(ctx):
-    return {key: ctx[key] for key in set(ctx.keys()) - {"__builtins__", "__writer__"}}
+    return json.dumps(
+        {key: ctx[key] for key in set(ctx.keys()) - {"__builtins__", "__writer__"}},
+        default=safe_repr,
+    )
 
 
 def _templater_tracer(render):
     @wraps(render)
     def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(
-            op=OP.TEMPLATE_RENDER,
+        if traces.get_current_span() is None:
+            return render(*args, **kwargs)
+        with traces.start_span(
             name=args[0],
-            origin=_SPAN_ORIGIN,
+            attributes={"sentry.op": OP.TEMPLATE_RENDER, "sentry.origin": _SPAN_ORIGIN},
         ) as span:
-            span.set_data("context", _templater_ctx_filter(kwargs.get("context") or args[1]))
+            with capture_internal_exceptions():
+                span.set_attribute("context", _templater_ctx_filter(kwargs.get("context") or args[1]))
             return render(*args, **kwargs)
 
     return wrapped
@@ -52,7 +61,10 @@ def _session_tracer(pipe, method):
 
     @wraps(_original_method)
     def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(op=f"session.{span_name}", origin=_SPAN_ORIGIN):
+        if traces.get_current_span() is None:
+            return _original_method(*args, **kwargs)
+        op = f"session.{span_name}"
+        with traces.start_span(name=op, attributes={"sentry.op": op, "sentry.origin": _SPAN_ORIGIN}):
             return _original_method(*args, **kwargs)
 
     return wrapped
@@ -63,11 +75,13 @@ def _cache_tracer(handler, method, op):
 
     @wraps(_original_method)
     def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(
-            op=op,
-            origin=_SPAN_ORIGIN,
+        if traces.get_current_span() is None:
+            return _original_method(*args, **kwargs)
+        with traces.start_span(
+            name=op,
+            attributes={"sentry.op": op, "sentry.origin": _SPAN_ORIGIN},
         ) as span:
-            span.set_data(SPANDATA.CACHE_KEY, args[1])
+            span.set_attribute(SPANDATA.CACHE_KEY, args[1])
             return _original_method(*args, **kwargs)
 
     return wrapped
@@ -78,12 +92,13 @@ def _pipe_edge_tracer(original, mode):
 
     @wraps(original)
     async def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(
-            op=f"middleware.emmett.{mode}",
+        if traces.get_current_span() is None:
+            return await original(*args, **kwargs)
+        with traces.start_span(
             name=name,
-            origin=_SPAN_ORIGIN,
+            attributes={"sentry.op": f"middleware.emmett.{mode}", "sentry.origin": _SPAN_ORIGIN},
         ) as span:
-            span.set_tag("emmett.pipe", name)
+            span.set_attribute("emmett.pipe", name)
             return await original(*args, **kwargs)
 
     return wrapped
@@ -94,12 +109,13 @@ def _pipe_flow_tracer(original, pipe):
 
     @wraps(original)
     async def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(
-            op="middleware.emmett",
+        if traces.get_current_span() is None:
+            return await original(*args, **kwargs)
+        with traces.start_span(
             name=name,
-            origin=_SPAN_ORIGIN,
+            attributes={"sentry.op": "middleware.emmett", "sentry.origin": _SPAN_ORIGIN},
         ) as span:
-            span.set_tag("emmett.pipe", name)
+            span.set_attribute("emmett.pipe", name)
             return await original(*args, **kwargs)
 
     return wrapped
@@ -111,10 +127,11 @@ def _flow_target_tracer(pipeline, original):
 
     @wraps(original)
     async def wrapped(*args, **kwargs):
-        with sentry_sdk.start_span(
-            op=OP.FUNCTION,
+        if traces.get_current_span() is None:
+            return await original(*args, **kwargs)
+        with traces.start_span(
             name=original.__qualname__,
-            origin=_SPAN_ORIGIN,
+            attributes={"sentry.op": OP.FUNCTION, "sentry.origin": _SPAN_ORIGIN},
         ):
             return await original(*args, **kwargs)
 

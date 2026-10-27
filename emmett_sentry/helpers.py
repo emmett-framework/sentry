@@ -6,37 +6,26 @@ from functools import wraps
 
 import sentry_sdk
 from emmett_core.http.response import HTTPResponse
-from sentry_sdk.api import continue_trace
+from sentry_sdk import traces
 from sentry_sdk.integrations._wsgi_common import _filter_headers
 from sentry_sdk.sessions import track_session
-from sentry_sdk.tracing import SOURCE_FOR_STYLE
 from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
 
 from ._imports import current
 
 
+_SDK_MAJOR = int(sentry_sdk.VERSION.split(".")[0])
 _SPAN_ORIGIN = "auto.http.emmett"
 _SPAN_ORIGIN_DB = "auto.db.emmett"
 
 
-class _FakeTxn:
-    def set_http_status(self, *args, **kwargs):
-        return
-
-
-class _TxnNullContext:
-    def __enter__(self):
-        return _FakeTxn()
-
-    def __exit__(self, *args, **kwargs):
-        return
-
-
 def _capture_exception(exception, handled=False):
+    # SDK 3.x reads client options by itself, SDK 2.x falls back to defaults without them
+    opts = {"client_options": sentry_sdk.get_client().options} if _SDK_MAJOR < 3 else {}
     event, hint = event_from_exception(
         exception,
-        client_options=sentry_sdk.get_client().options,
         mechanism={"type": "emmett", "handled": handled},
+        **opts,
     )
     sentry_sdk.capture_event(event, hint=hint)
 
@@ -52,28 +41,24 @@ def _http_scope_wrapper(req, proto, with_sess=True, with_txn=False):
     _sentry_session = track_session(_sentry_scope, session_mode="request") if with_sess else nullcontext()
     _sentry_session.__enter__()
     _configure_scope(_sentry_scope, proto, _process_http, req)
-    _ctx = (
-        sentry_sdk.start_transaction(_configure_transaction(proto, req, "http"), custom_sampling_context=None)
-        if with_txn
-        else _TxnNullContext()
-    )
-    _txn = _ctx.__enter__()
+    _ctx = _start_server_span(proto, req, "http") if with_txn else nullcontext()
+    _span = _ctx.__enter__()
     try:
         yield _sentry_scope
     except HTTPResponse as http:
-        _txn.set_http_status(http.status_code)
+        _set_http_status(_span, http.status_code)
         _ctx.__exit__(None, None, None)
         _sentry_session.__exit__(None, None, None)
         _sentry_scope_gen.__exit__(None, None, None)
         raise http
     except Exception:
-        _txn.set_http_status(500)
+        _set_http_status(_span, 500)
         exc = sys.exc_info()
         _ctx.__exit__(*exc)
         _sentry_session.__exit__(*exc)
         _sentry_scope_gen.__exit__(*exc)
         raise
-    _txn.set_http_status(current.response.status)
+    _set_http_status(_span, current.response.status)
     _ctx.__exit__(None, None, None)
     _sentry_session.__exit__(None, None, None)
     _sentry_scope_gen.__exit__(None, None, None)
@@ -86,11 +71,7 @@ def _ws_scope_wrapper(ws, proto, with_sess=True, with_txn=False):
     _sentry_session = track_session(_sentry_scope, session_mode="request") if with_sess else nullcontext()
     _sentry_session.__enter__()
     _configure_scope(_sentry_scope, proto, _process_ws, ws)
-    _ctx = (
-        sentry_sdk.start_transaction(_configure_transaction(proto, ws, "websocket"), custom_sampling_context=None)
-        if with_txn
-        else nullcontext()
-    )
+    _ctx = _start_server_span(proto, ws, "websocket") if with_txn else nullcontext()
     _ctx.__enter__()
     try:
         yield _sentry_scope
@@ -111,13 +92,25 @@ def _configure_scope(scope, proto, proc, wrapper):
     scope.add_event_processor(proc(proto, weakref.ref(wrapper)))
 
 
-def _configure_transaction(proto, wrapper, sgi_proto):
-    txn_name, txn_source = wrapper.name, SOURCE_FOR_STYLE["endpoint"]
-    txn = continue_trace(
-        wrapper.headers, op=f"{sgi_proto}.server", name=txn_name, source=txn_source, origin=_SPAN_ORIGIN
+def _start_server_span(proto, wrapper, sgi_proto):
+    traces.continue_trace(wrapper.headers)
+    return traces.start_span(
+        name=wrapper.name,
+        parent_span=None,
+        attributes={
+            "sentry.op": f"{sgi_proto}.server",
+            "sentry.origin": _SPAN_ORIGIN,
+            "sentry.segment.name.source": "component",
+            f"{proto}.type": sgi_proto,
+        },
     )
-    txn.set_tag(f"{proto}.type", sgi_proto)
-    return txn
+
+
+def _set_http_status(span, status_code):
+    if span is None:
+        return
+    span.set_attribute("http.response.status_code", status_code)
+    span.status = "error" if status_code >= 400 else "ok"
 
 
 def _process_common_asgi(data, wrapper):
@@ -133,7 +126,7 @@ def _process_common(data, proto, wrapper):
     data["env"] = {}
     data["headers"] = _filter_headers(dict(wrapper.headers.items()))
 
-    if sentry_sdk.get_client().should_send_default_pii():
+    if sentry_sdk.get_client().options["data_collection"]["user_info"]:
         data["env"]["REMOTE_ADDR"] = wrapper.client
 
     if proto == "rsgi":

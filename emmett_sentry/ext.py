@@ -47,7 +47,8 @@ class Sentry(Extension):
             "before_send": self._before_send,
             "integrations": self.config.integrations,
         }
-        sdk_config = {**sdk_config, **self.config.sdk_opts}
+        sdk_config.update(self.config.sdk_opts)
+        sdk_config["trace_lifecycle"] = "stream"
         sentry_sdk.init(**sdk_config)
         if self.config.auto_load:
             patch_routers(self)
@@ -104,14 +105,14 @@ class Sentry(Extension):
 
 
 def capture_exception(exception, **contexts):
-    with sentry_sdk.get_current_scope() as scope:
-        for key, val in contexts.items():
-            scope.set_context(key, val)
-        _capture_exception(exception)
+    scope = sentry_sdk.get_current_scope()
+    for key, val in contexts.items():
+        scope.set_context(key, val)
+    _capture_exception(exception)
 
 
 def capture_message(message, level, **contexts):
-    with sentry_sdk.get_current_scope() as scope:
-        for key, val in contexts.items():
-            scope.set_context(key, val)
-        _capture_message(message, level=level)
+    scope = sentry_sdk.get_current_scope()
+    for key, val in contexts.items():
+        scope.set_context(key, val)
+    _capture_message(message, level=level)
