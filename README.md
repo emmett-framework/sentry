@@ -32,7 +32,7 @@ Here is the complete list of parameters of the extension configuration:
 | integrations | | List of integrations to pass to the SDK |
 | enable\_tracing | `False` | Enable tracing on routes |
 | tracing\_sample\_rate | | Traces sampling rate |
-| tracing\_exclude\_routes | | List of specific routes to exclude from tracing | 
+| tracing\_exclude\_routes | | List of specific routes to exclude from tracing |
 | trace\_websockets | `False` | Enable tracing on websocket routes |
 | trace\_orm | `True` | Enable tracing on ORM queries |
 | trace\_templates | `True` | Enable tracing on templates rendering |
