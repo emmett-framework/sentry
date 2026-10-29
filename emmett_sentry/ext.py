@@ -1,5 +1,6 @@
 import sys
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 import sentry_sdk
 
@@ -87,11 +88,11 @@ class Sentry(Extension):
                 break
         return event
 
-    def exception(self, exc_info: Any = None, **kwargs: Dict[str, Any]):
+    def exception(self, exc_info: Any = None, **kwargs: dict[str, Any]):
         assert self._initialized, self._errmsg
         capture_exception(exc_info or sys.exc_info(), **kwargs)
 
-    def message(self, msg: str, level: Optional[str] = None, **kwargs: Dict[str, Any]):
+    def message(self, msg: str, level: str | None = None, **kwargs: dict[str, Any]):
         assert self._initialized, self._errmsg
         capture_message(msg, level, **kwargs)
 

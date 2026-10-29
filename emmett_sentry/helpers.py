@@ -65,7 +65,7 @@ def _http_scope_wrapper(req, proto, with_sess=True, with_txn=False):
         _ctx.__exit__(None, None, None)
         _sentry_session.__exit__(None, None, None)
         _sentry_scope_gen.__exit__(None, None, None)
-        raise http
+        raise
     except Exception:
         _txn.set_http_status(500)
         exc = sys.exc_info()

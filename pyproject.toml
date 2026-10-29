@@ -71,7 +71,10 @@ extend-select = [
     'W',      # pycodestyle
 ]
 extend-ignore = [
+    'RUF012',
+    'RUF048',
     'S101', # assert is fine
+    'UP031',
 ]
 mccabe = { max-complexity = 44 }
 
